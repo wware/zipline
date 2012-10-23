@@ -366,6 +366,7 @@ class BatchTransform(EventWindow):
 
         self.updated = False
         self.data = None
+        self.last_sids = None
 
     def handle_data(self, data, *args, **kwargs):
         """
@@ -392,12 +393,21 @@ class BatchTransform(EventWindow):
         return self.get_transform_value(*args, **kwargs)
 
     def handle_add(self, event):
+
         if not self.last_refresh:
             self.last_refresh = event.dt
             return
 
+        cur_sids = set(event.keys())
+
+
         age = event.dt - self.last_refresh
-        if age.days >= self.refresh_period:
+        # update the data if the refresh period has elapsed, or
+        # if the sid list has one or more new sids.
+        if age.days >= self.refresh_period or \
+               (self.last_sids is not None and not \
+                cur_sids.issubset(self.last_sids)):
+
             # Create a pandas.Panel (i.e. 3d DataFrame) from the
             # events in the current window.
             #
@@ -413,26 +423,25 @@ class BatchTransform(EventWindow):
             # event parameter is an ndict with data, dt keys.
             fields = {}
             for field_name in ['price', 'volume']:
-                sids = self.ticks[0].data.keys()
-                # Skip non-existant fields
-                if field_name not in self.ticks[0].data[sids[0]]:
-                    continue
+                rows = {}
+                for tick in self.ticks:
+                    sids = tick.data.keys()
+                    sids_field = {sid: tick.data[sid][field_name]
+                         for sid in tick.data.keys()}
+                    rows[tick.dt] = sids_field
 
-                values_per_sid = {}
+                    # Skip non-existant fields
+                    if field_name not in tick.data[sids[0]]:
+                        continue
 
-                for sid in sids:
-                    values_per_sid[sid] = pd.Series(
-                        {tick.data[sid].dt: tick.data[sid][field_name]
-                         for tick in self.ticks}
-                    )
+                fields[field_name] = pd.DataFrame.from_dict(rows, orient='index')
 
-                # concatenate different sids into one df
-                fields[field_name] = pd.DataFrame.from_dict(values_per_sid)
 
             self.data = pd.Panel.from_dict(fields, orient='items')
 
             self.updated = True
             self.last_refresh = event.dt
+            self.last_sids = set(self.data.minor_axis.tolist())
         else:
             self.updated = False
 

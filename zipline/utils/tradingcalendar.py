@@ -105,7 +105,7 @@ non_trading_rules.append(labor_day)
 thanksgiving = rrule.rrule(
     rrule.MONTHLY,
     bymonth=11,
-    byweekday=(rrule.TH(-1)),
+    byweekday=(rrule.TH(4)),
     cache=True,
     dtstart=start,
     until=end

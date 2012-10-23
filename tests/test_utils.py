@@ -18,6 +18,9 @@ from zipline.utils.factory import load_from_yahoo
 import pandas as pd
 import pytz
 import numpy as np
+from datetime import datetime
+
+from zipline.utils.date_utils import get_quarter, dates_of_quarter
 
 
 class TestFactory(TestCase):
@@ -36,3 +39,36 @@ class TestFactory(TestCase):
             AssertionError, load_from_yahoo, stocks=stocks,
             start=end, end=start
         )
+
+
+class TestDateUtils(TestCase):
+
+    def test_quarter(self):
+        # the following list of tuples are dates, quarter
+        # numbers, quarter start, quarter end. They were
+        # calculated by hand.
+        answer_key = [
+                (datetime(1970,1,2,tzinfo=pytz.utc),
+                    7880,
+                    datetime(1970,1,1,0,0,tzinfo=pytz.utc),
+                    datetime(1970,3,31,23,59,tzinfo=pytz.utc)),
+                (datetime(2002,5,18,tzinfo=pytz.utc),
+                    8009,
+                    datetime(2002,4,1,0,0,tzinfo=pytz.utc),
+                    datetime(2002,6,30,23,59,tzinfo=pytz.utc)),
+                (datetime(2011,8,19,tzinfo=pytz.utc),
+                    8046,
+                    datetime(2011,7,1,0,0,tzinfo=pytz.utc),
+                    datetime(2011,9,30,23,59,tzinfo=pytz.utc)),
+                (datetime(2006,10,2,tzinfo=pytz.utc),
+                    8027,
+                    datetime(2006,10,1,0,0,tzinfo=pytz.utc),
+                    datetime(2006,12,31,23,59,tzinfo=pytz.utc)),
+                ]
+
+        for pair in answer_key:
+            q = get_quarter(pair[0])
+            self.assertEqual(pair[1], q)
+            start, end = dates_of_quarter(q)
+            self.assertEqual(pair[2], start)
+            self.assertEqual(pair[3], end)
