@@ -333,9 +333,11 @@ class BatchTransformTestCase(TestCase):
                     test_history[2].values.flatten()
             )
 
+            import nose.tools; nose.tools.set_trace()
             np.testing.assert_array_equal(
                     range(4, 10),
-                    test_history[3].values.flatten()
+                    test_history[3].values.flatten(),
+                    str(test_history)
             )
 
             np.testing.assert_array_equal(
