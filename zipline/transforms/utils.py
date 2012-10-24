@@ -400,13 +400,12 @@ class BatchTransform(EventWindow):
 
         cur_sids = set(event.keys())
 
-
         age = event.dt - self.last_refresh
         # update the data if the refresh period has elapsed, or
         # if the sid list has one or more new sids.
-        if age.days >= self.refresh_period or \
-               (self.last_sids is not None and not \
-                cur_sids.issubset(self.last_sids)):
+        if age.days >= self.refresh_period or (
+                self.last_sids is not None
+                and not cur_sids.issubset(self.last_sids)):
 
             # Create a pandas.Panel (i.e. 3d DataFrame) from the
             # events in the current window.
@@ -426,16 +425,18 @@ class BatchTransform(EventWindow):
                 rows = {}
                 for tick in self.ticks:
                     sids = tick.data.keys()
-                    sids_field = {sid: tick.data[sid][field_name]
-                         for sid in tick.data.keys()}
+                    sids_field = {
+                        sid: tick.data[sid][field_name]
+                        for sid in tick.data.keys()
+                    }
                     rows[tick.dt] = sids_field
 
                     # Skip non-existant fields
                     if field_name not in tick.data[sids[0]]:
                         continue
 
-                fields[field_name] = pd.DataFrame.from_dict(rows, orient='index')
-
+                fields[field_name] = pd.DataFrame.from_dict(
+                    rows, orient='index')
 
             self.data = pd.Panel.from_dict(fields, orient='items')
 

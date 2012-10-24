@@ -48,23 +48,23 @@ class TestDateUtils(TestCase):
         # numbers, quarter start, quarter end. They were
         # calculated by hand.
         answer_key = [
-                (datetime(1970,1,2,tzinfo=pytz.utc),
-                    7880,
-                    datetime(1970,1,1,0,0,tzinfo=pytz.utc),
-                    datetime(1970,3,31,23,59,tzinfo=pytz.utc)),
-                (datetime(2002,5,18,tzinfo=pytz.utc),
-                    8009,
-                    datetime(2002,4,1,0,0,tzinfo=pytz.utc),
-                    datetime(2002,6,30,23,59,tzinfo=pytz.utc)),
-                (datetime(2011,8,19,tzinfo=pytz.utc),
-                    8046,
-                    datetime(2011,7,1,0,0,tzinfo=pytz.utc),
-                    datetime(2011,9,30,23,59,tzinfo=pytz.utc)),
-                (datetime(2006,10,2,tzinfo=pytz.utc),
-                    8027,
-                    datetime(2006,10,1,0,0,tzinfo=pytz.utc),
-                    datetime(2006,12,31,23,59,tzinfo=pytz.utc)),
-                ]
+            (datetime(1970, 1, 2, tzinfo=pytz.utc),
+             7880,
+             datetime(1970, 1, 1, 0, 0, tzinfo=pytz.utc),
+             datetime(1970, 3, 31, 23, 59, tzinfo=pytz.utc)),
+            (datetime(2002, 5, 18, tzinfo=pytz.utc),
+             8009,
+             datetime(2002, 4, 1, 0, 0, tzinfo=pytz.utc),
+             datetime(2002, 6, 30, 23, 59, tzinfo=pytz.utc)),
+            (datetime(2011, 8, 19, tzinfo=pytz.utc),
+             8046,
+             datetime(2011, 7, 1, 0, 0, tzinfo=pytz.utc),
+             datetime(2011, 9, 30, 23, 59, tzinfo=pytz.utc)),
+            (datetime(2006, 10, 2, tzinfo=pytz.utc),
+             8027,
+             datetime(2006, 10, 1, 0, 0, tzinfo=pytz.utc),
+             datetime(2006, 12, 31, 23, 59, tzinfo=pytz.utc)),
+        ]
 
         for pair in answer_key:
             q = get_quarter(pair[0])
