@@ -251,7 +251,6 @@ class DataFrameSource(SpecificEquityTrades):
                     event = copy(event)
                     event['sid'] = sid
                     event['price'] = price
-                    event['volume'] = 1000
 
                     yield ndict(event)
 
