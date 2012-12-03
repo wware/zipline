@@ -216,16 +216,21 @@ class RiskMetricsBase(object):
         period_returns = period_returns - 1.0
         return period_returns, returns
 
-    def calculate_volatility(self, daily_returns):
-        return np.std(daily_returns, ddof=1) * math.sqrt(self.trading_days)
+    def calculate_volatility(self, daily_returns, annualizer=252):
+        return np.std(daily_returns, ddof=1) * math.sqrt(annualizer)
 
-    def calculate_sharpe(self):
+    def calculate_sharpe(self, annualizer=252):
         """
         http://en.wikipedia.org/wiki/Sharpe_ratio
         """
         if self.algorithm_volatility == 0:
             return 0.0
 
+        # you want vectors available
+        # (mean(returns - risk_free_returns) / std(returns-risk_free_returns))
+        #    * sqrt(annualizer)
+        # expected excess return (strat_returns - risk_free_return)
+        # add unittests with e.g. normally distributed data
         return ((self.algorithm_period_returns - self.treasury_period_return) /
                 self.algorithm_volatility)
 
@@ -249,6 +254,11 @@ class RiskMetricsBase(object):
         C = np.cov(returns_matrix)
         eigen_values = la.eigvals(C)
         condition_number = max(eigen_values) / min(eigen_values)
+        # condition number?
+        # run linear regression instead
+        # beta with excess returns (algo_return - treasury) and
+        # (bench - treasury)
+        # separate: weighted beta (adjust towards one)
         algorithm_covariance = C[0][1]
         benchmark_variance = C[1][1]
         beta = C[0][1] / C[1][1]
@@ -270,6 +280,7 @@ class RiskMetricsBase(object):
              (self.benchmark_period_returns - self.treasury_period_return))
 
     def calculate_max_drawdown(self):
+        # alternative max.cum()
         compounded_returns = []
         cur_return = 0.0
         for r in self.algorithm_returns:
