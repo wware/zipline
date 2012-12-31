@@ -56,7 +56,7 @@ class TransformMeta(type):
     *args, **kwargs) instead of an instance of Foo. (Note that you can
     still recover an instance of a "raw" Foo by introspecting the
     resulting StatefulTransform's 'state' field.
-    """
+   """
 
     def __call__(cls, *args, **kwargs):
         return StatefulTransform(cls, *args, **kwargs)
@@ -241,7 +241,7 @@ class EventWindow(object):
         self.handle_add(event)
 
         if self.market_aware:
-            self.add_new_holidays(event.dt)
+            self.add_new_holidays(event['dt'])
 
         # Clear out any expired events. drop_condition changes depending
         # on whether or not we are running in market_aware mode.
@@ -249,7 +249,7 @@ class EventWindow(object):
         #                              oldest               newest
         #                                |                    |
         #                                V                    V
-        while self.drop_condition(self.ticks[0].dt, self.ticks[-1].dt):
+        while self.drop_condition(self.ticks[0]['dt'], self.ticks[-1]['dt']):
 
             # popleft removes and returns the oldest tick in self.ticks
             popped = self.ticks.popleft()
@@ -292,11 +292,11 @@ class EventWindow(object):
     # All event windows expect to receive events with datetime fields
     # that arrive in sorted order.
     def assert_well_formed(self, event):
-        assert isinstance(event.dt, datetime), \
+        assert isinstance(event['dt'], datetime), \
             "Bad dt in EventWindow:%s" % event
         if len(self.ticks) > 0:
             # Something is wrong if new event is older than previous.
-            assert event.dt >= self.ticks[-1].dt, \
+            assert event['dt'] >= self.ticks[-1]['dt'], \
                 "Events arrived out of order in EventWindow: %s -> %s" % \
                 (event, self.ticks[0])
 
@@ -426,9 +426,9 @@ class BatchTransform(EventWindow):
         # couple of seconds shouldn't matter. We don't add it to
         # the data parameter, because it would mix dt with the
         # sid keys.
-        event = ndict()
-        event.dt = max(dts)
-        event.data = data
+        event = dict()
+        event['data'] = {k: dict(v) for k, v in data.iteritems()}
+        event['dt'] = max(dts)
 
         # append data frame to window. update() will call handle_add() and
         # handle_remove() appropriately
@@ -441,7 +441,8 @@ class BatchTransform(EventWindow):
         # extract field names from sids (price, volume etc), make sure
         # every sid has the same fields.
         sid_keys = []
-        for sid in event.data.itervalues():
+
+        for sid in event['data'].itervalues():
             keys = set([name for name, value in sid.items()
                         if (isinstance(value, (int, float)))])
             sid_keys.append(keys)
@@ -457,11 +458,11 @@ class BatchTransform(EventWindow):
         if not self.last_dt:
             if self.field_names is None:
                 self.field_names = self._extract_field_names(event)
-            self.last_dt = event.dt
+            self.last_dt = event['dt']
 
         # update trading day counters
-        if self.last_dt.day != event.dt.day:
-            self.last_dt = event.dt
+        if self.last_dt.day != event['dt'].day:
+            self.last_dt = event['dt']
             self.trading_days_since_update += 1
             self.trading_days_total += 1
 
@@ -489,25 +490,15 @@ class BatchTransform(EventWindow):
         """
         # This Panel data structure ultimately gets passed to the
         # user-overloaded get_value() method.
-
-        # If sids are set, use those. Otherwise extract.
-        if self.sids is not None:
-            sids = self.sids
-        else:
-            sids = set.union(*[set(tick.data.keys()) for tick in self.ticks])
-
-        dts = [tick.dt for tick in self.ticks]
-
-        data = pd.Panel(items=self.field_names, major_axis=dts,
-                        minor_axis=sids)
-
-        # Fill data panel
-        for tick in self.ticks:
-            dt = tick.dt
-            for sid in sids:
-                fields = tick.data[sid]
-                for field_name in self.field_names:
-                    data[field_name][sid].ix[dt] = fields[field_name]
+        data_dict = dict((tick['dt'], tick['data']) for tick in self.ticks)
+        data = pd.Panel(data_dict, major_axis=self.field_names,
+                        minor_axis=self.sids)
+        # Panel interprets the outer-most keys as the items, the the
+        # inner dicts are treated as though passed to DataFrame
+        # (e.g. their outer keys become the columns--then
+        # minor_axis--of each inner dataframe). so the resulting panel
+        # should be dates x fields x sids, so swapping 0 for 1
+        data = data.swapaxes(0, 1)
 
         if self.clean_nans:
             # Fills in gaps of missing data during transform
