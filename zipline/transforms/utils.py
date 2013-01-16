@@ -56,7 +56,7 @@ class TransformMeta(type):
     *args, **kwargs) instead of an instance of Foo. (Note that you can
     still recover an instance of a "raw" Foo by introspecting the
     resulting StatefulTransform's 'state' field.
-    """
+   """
 
     def __call__(cls, *args, **kwargs):
         return StatefulTransform(cls, *args, **kwargs)
@@ -241,7 +241,7 @@ class EventWindow(object):
         self.handle_add(event)
 
         if self.market_aware:
-            self.add_new_holidays(event.dt)
+            self.add_new_holidays(event['dt'])
 
         # Clear out any expired events. drop_condition changes depending
         # on whether or not we are running in market_aware mode.
@@ -249,7 +249,7 @@ class EventWindow(object):
         #                              oldest               newest
         #                                |                    |
         #                                V                    V
-        while self.drop_condition(self.ticks[0].dt, self.ticks[-1].dt):
+        while self.drop_condition(self.ticks[0]['dt'], self.ticks[-1]['dt']):
 
             # popleft removes and returns the oldest tick in self.ticks
             popped = self.ticks.popleft()
@@ -292,11 +292,11 @@ class EventWindow(object):
     # All event windows expect to receive events with datetime fields
     # that arrive in sorted order.
     def assert_well_formed(self, event):
-        assert isinstance(event.dt, datetime), \
+        assert isinstance(event['dt'], datetime), \
             "Bad dt in EventWindow:%s" % event
         if len(self.ticks) > 0:
             # Something is wrong if new event is older than previous.
-            assert event.dt >= self.ticks[-1].dt, \
+            assert event['dt'] >= self.ticks[-1]['dt'], \
                 "Events arrived out of order in EventWindow: %s -> %s" % \
                 (event, self.ticks[0])
 
@@ -426,13 +426,9 @@ class BatchTransform(EventWindow):
         # couple of seconds shouldn't matter. We don't add it to
         # the data parameter, because it would mix dt with the
         # sid keys.
-        event = dict()
+        assert not isinstance(data, ndict)
+        event = deepcopy(data.__dict__)
         event['dt'] = max(dts)
-        # Hack: convert (and copy) to dict for later panel conversion
-        new_data = dict()
-        for sid, frame in data.iteritems():
-            new_data[sid] = dict(frame)
-        event['data'] = dict(new_data)
 
         # append data frame to window. update() will call handle_add() and
         # handle_remove() appropriately
@@ -445,6 +441,7 @@ class BatchTransform(EventWindow):
         # extract field names from sids (price, volume etc), make sure
         # every sid has the same fields.
         sid_keys = []
+
         for sid in event['data'].itervalues():
             keys = set([name for name, value in sid.items()
                         if (isinstance(value, (int, float)))])
