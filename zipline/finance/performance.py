@@ -136,7 +136,8 @@ import datetime
 import pytz
 import math
 
-from zipline.utils.protocol_utils import ndict
+import numpy as np
+
 import zipline.protocol as zp
 import zipline.finance.risk as risk
 
@@ -180,10 +181,6 @@ class PerformanceTracker(object):
 
         # this performance period will span the entire simulation.
         self.cumulative_performance = PerformancePeriod(
-            # initial positions are empty
-            positiondict(),
-            # initial portfolio positions have zero value
-            0,
             # initial cash is your capital base.
             self.capital_base,
             # the cumulative period will be calculated over the entire test.
@@ -193,10 +190,6 @@ class PerformanceTracker(object):
 
         # this performance period will span just the current market day
         self.todays_performance = PerformancePeriod(
-            # initial positions are empty
-            positiondict(),
-            # initial portfolio positions have zero value
-            0,
             # initial cash is your capital base.
             self.capital_base,
             # the daily period will be calculated for the market day
@@ -314,14 +307,9 @@ Last successful date: %s" % self.market_open)
         self.market_close = self.market_open + self.trading_day
 
         # Roll over positions to current day.
-        self.todays_performance = PerformancePeriod(
-            self.todays_performance.positions,
-            self.todays_performance.ending_value,
-            self.todays_performance.ending_cash,
-            self.market_open,
-            self.market_close,
-            keep_transactions=True
-        )
+        self.todays_performance.rollover()
+        self.todays_performance.period_open = self.market_open
+        self.todays_performance.period_close = self.market_close
 
         return daily_update
 
@@ -411,8 +399,6 @@ class PerformancePeriod(object):
 
     def __init__(
             self,
-            initial_positions,
-            starting_value,
             starting_cash,
             period_open=None,
             period_close=None,
@@ -425,12 +411,8 @@ class PerformancePeriod(object):
         self.period_capital_used = 0.0
         self.pnl = 0.0
         #sid => position object
-        if not isinstance(initial_positions, positiondict):
-            self.positions = positiondict()
-            self.positions.update(initial_positions)
-        else:
-            self.positions = initial_positions
-        self.starting_value = starting_value
+        self.positions = positiondict()
+        self.starting_value = 0.0
         #cash balance at start of period
         self.starting_cash = starting_cash
         self.ending_cash = starting_cash
@@ -440,7 +422,40 @@ class PerformancePeriod(object):
         self.max_capital_used = 0.0
         self.max_leverage = 0.0
 
+        # Maps position to following array indexes
+        self._position_index_map = {}
+        # Arrays for quick calculations of positions value
+        self._position_amounts = np.array([])
+        self._position_last_sale_prices = np.array([])
+
         self.calculate_performance()
+
+        # An object to recycle via assigning new values
+        # when returning portfolio information.
+        # So as not to avoid creating a new object for each event
+        self._portfolio_store = zp.Portfolio()
+        self._positions_store = zp.Positions()
+
+    def rollover(self):
+        self.starting_value = self.ending_value
+        self.starting_cash = self.ending_cash
+        self.period_capital_used = 0.0
+        self.pnl = 0.0
+        self.processed_transactions = []
+        self.cumulative_capital_used = 0.0
+        self.max_capital_used = 0.0
+        self.max_leverage = 0.0
+
+    def index_for_position(self, sid):
+        try:
+            index = self._position_index_map[sid]
+        except KeyError:
+            index = len(self._position_index_map)
+            self._position_index_map[sid] = index
+            self._position_amounts = np.append(self._position_amounts, [0])
+            self._position_last_sale_prices = np.append(
+                self._position_last_sale_prices, [0])
+        return index
 
     def calculate_performance(self):
         self.ending_value = self.calculate_positions_value()
@@ -458,7 +473,11 @@ class PerformancePeriod(object):
     def execute_transaction(self, txn):
         # Update Position
         # ----------------
-        self.positions[txn.sid].update(txn)
+        position = self.positions[txn.sid]
+        position.update(txn)
+        index = self.index_for_position(txn.sid)
+        self._position_amounts[index] = position.amount
+
         self.period_capital_used += -1 * txn.price * txn.amount
 
         # Max Leverage
@@ -489,15 +508,15 @@ class PerformancePeriod(object):
         return int(base * round(float(x) / base))
 
     def calculate_positions_value(self):
-        mktValue = 0.0
-        for key, pos in self.positions.iteritems():
-            mktValue += pos.currentValue()
-        return mktValue
+        return np.vdot(self._position_amounts, self._position_last_sale_prices)
 
     def update_last_sale(self, event):
         is_trade = event.type == zp.DATASOURCE_TYPE.TRADE
         if event.sid in self.positions and is_trade:
             self.positions[event.sid].last_sale_price = event.price
+            index = self.index_for_position(event.sid)
+            self._position_last_sale_prices[index] = event.price
+
             self.positions[event.sid].last_sale_date = event.dt
 
     def __core_dict(self):
@@ -543,38 +562,33 @@ class PerformancePeriod(object):
         PerformancePeriod, and in this method we rename some
         fields for usability and remove extraneous fields.
         """
-        portfolio = self.__core_dict()
-        # rename:
-        # ending_cash -> cash
-        # period_open -> backtest_start
-        #
-        # remove:
-        # period_close, starting_value,
-        # cumulative_capital_used, max_leverage, max_capital_used
-        portfolio['cash'] = portfolio['ending_cash']
-        portfolio['start_date'] = portfolio['period_open']
-        portfolio['positions_value'] = portfolio['ending_value']
-
-        del(portfolio['ending_cash'])
-        del(portfolio['period_open'])
-        del(portfolio['period_close'])
-        del(portfolio['starting_value'])
-        del(portfolio['ending_value'])
-        del(portfolio['cumulative_capital_used'])
-        del(portfolio['max_leverage'])
-        del(portfolio['max_capital_used'])
-
-        portfolio['positions'] = self.get_positions()
-
-        return ndict(portfolio)
+        # Recycles containing objects' Portfolio object
+        # which is used for returning values.
+        # as_portfolio is called in an inner loop,
+        # so repeated object creation becomes too expensive
+        portfolio = self._portfolio_store
+        portfolio.capital_used = self.period_capital_used,
+        portfolio.starting_cash = self.starting_cash
+        portfolio.portfolio_value = self.ending_cash + self.ending_value
+        portfolio.pnl = self.pnl
+        portfolio.returns = self.returns
+        portfolio.cash = self.ending_cash
+        portfolio.start_date = self.period_open
+        portfolio.positions = self.get_positions()
+        portfolio.positions_value = self.ending_value
+        return portfolio
 
     def get_positions(self):
 
-        positions = ndict(internal=position_ndict())
+        positions = self._positions_store
 
         for sid, pos in self.positions.iteritems():
-            cur = pos.to_dict()
-            positions[sid] = ndict(cur)
+            if sid not in positions:
+                positions[sid] = zp.Position(sid)
+            position = positions[sid]
+            position.amount = pos.amount
+            position.cost_basis = pos.cost_basis
+            position.last_sale_price = pos.last_sale_price
 
         return positions
 
@@ -591,12 +605,4 @@ class positiondict(dict):
     def __missing__(self, key):
         pos = Position(key)
         self[key] = pos
-        return pos
-
-
-class position_ndict(dict):
-
-    def __missing__(self, key):
-        pos = Position(key)
-        self[key] = ndict(pos.to_dict())
         return pos
