@@ -18,6 +18,8 @@ Unit tests for finance.slippage
 """
 import datetime
 
+import numpy as np
+
 import pytz
 
 from unittest import TestCase
@@ -67,6 +69,55 @@ class SlippageTestCase(TestCase):
             'dt': datetime.datetime(
                 2006, 1, 5, 14, 31, tzinfo=pytz.utc),
             'amount': int(50),
+            'sid': int(133)
+        }
+
+        self.assertIsNotNone(txn)
+
+        for key, value in expected_txn.items():
+            self.assertEquals(value, txn[key])
+
+    def test_volume_share_slippage_no_delay(self):
+
+        event = ndict(
+            {'volume': 200,
+             'TRANSACTION': None,
+             'type': 4,
+             'price': 3.0,
+             'datetime': datetime.datetime(
+                 2006, 1, 5, 14, 31, tzinfo=pytz.utc),
+             'high': 3.15,
+             'low': 2.85,
+             'sid': 133,
+             'source_id': 'test_source',
+             'close': 3.0,
+             'dt':
+             datetime.datetime(2006, 1, 5, 14, 31, tzinfo=pytz.utc),
+             'open': 3.0}
+        )
+
+        slippage_model = VolumeShareSlippage(
+            volume_limit=np.inf,
+            price_impact=0,
+            delay=datetime.timedelta(minutes=0))
+
+        open_orders = {133: [
+            ndict(
+                {'dt': datetime.datetime(2006, 1, 5, 14, 30, tzinfo=pytz.utc),
+                 'amount': 100,
+                 'filled': 0, 'sid': 133})
+        ]}
+
+        txn = slippage_model.simulate(
+            event,
+            open_orders
+        )
+
+        expected_txn = {
+            'price': float(3.0),
+            'dt': datetime.datetime(
+                2006, 1, 5, 14, 30, tzinfo=pytz.utc),
+            'amount': int(100),
             'sid': int(133)
         }
 
