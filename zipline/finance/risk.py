@@ -522,21 +522,30 @@ class RiskMetricsIterative(RiskMetricsBase):
         Call update() method on each dt to update the metrics.
     """
 
-    def __init__(self, start_date, end_date):
+    def __init__(self, sim_params, data_frequency='daily'):
         self.treasury_curves = trading.environment.treasury_curves
-        self.start_date = start_date.replace(hour=0, minute=0, second=0,
-                                             microsecond=0)
-        self.end_date = end_date.replace(hour=0, minute=0, second=0,
-                                         microsecond=0)
+        self.start_date = sim_params.period_start.replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        self.end_date = sim_params.period_end.replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
 
         all_trading_days = trading.environment.trading_days
         mask = ((all_trading_days >= self.start_date) &
                 (all_trading_days <= self.end_date))
 
-        self.trading_days = all_trading_days[mask]
+        self.data_frequency = data_frequency
 
-        self.algorithm_returns_cont = pd.Series(index=self.trading_days)
-        self.benchmark_returns_cont = pd.Series(index=self.trading_days)
+        if sim_params.emission_rate == 'daily':
+            self.trading_days = all_trading_days[mask]
+
+            self.algorithm_returns_cont = pd.Series(index=self.trading_days)
+            self.benchmark_returns_cont = pd.Series(index=self.trading_days)
+        elif sim_params.emission_rate == 'minute':
+            self.algorithm_returns_cont = pd.Series(index=pd.date_range(
+                sim_params.first_open, sim_params.last_close,
+                freq="Min"))
 
         self.algorithm_returns = None
         self.benchmark_returns = None
@@ -562,7 +571,7 @@ class RiskMetricsIterative(RiskMetricsBase):
         self.max_drawdown = 0
         self.current_max = -np.inf
         self.excess_returns = []
-        self.last_dt = start_date
+        self.last_dt = self.start_date
 
     @property
     def last_return_date(self):
