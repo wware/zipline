@@ -279,6 +279,8 @@ class PerformanceTracker(object):
             # its own configuration down the line.
             # Naming as intraday to make clear that these results are
             # being updated per minute
+            _dict['intraday_risk_metrics'] = \
+                self.cumulative_risk_metrics.to_dict()
             _dict['intraday_perf'] = self.todays_performance.to_dict(
                 self.saved_dt)
 
@@ -420,10 +422,11 @@ class PerformanceTracker(object):
         # not trigger an end of day, so we trigger the final
         # market close(s) here
         perf_messages = []
-        while self.last_close > self.market_close:
-            perf_messages.append(self.handle_market_close())
+        if self.emission_rate == 'daily':
+            while self.last_close > self.market_close:
+                perf_messages.append(self.handle_market_close())
 
-        perf_messages.append(self.handle_market_close())
+            perf_messages.append(self.handle_market_close())
 
         log_msg = "Simulated {n} trading days out of {m}."
         log.info(log_msg.format(n=int(self.day_count), m=self.total_days))
