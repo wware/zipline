@@ -15,12 +15,10 @@
 
 import unittest
 import datetime
-import calendar
 import pytz
-import zipline.finance.risk as risk
-from zipline.utils import factory
 
 from zipline.finance.trading import SimulationParameters
+from zipline.finance import risk
 
 
 class TestMinuteRisk(unittest.TestCase):
@@ -30,20 +28,30 @@ class TestMinuteRisk(unittest.TestCase):
         start_date = datetime.datetime(
             year=2006,
             month=1,
-            day=1,
+            day=3,
             hour=0,
             minute=0,
             tzinfo=pytz.utc)
         end_date = datetime.datetime(
-            year=2006, month=12, day=1, tzinfo=pytz.utc)
+            year=2006, month=1, day=3, tzinfo=pytz.utc)
 
         self.sim_params = SimulationParameters(
             period_start=start_date,
             period_end=end_date
         )
+        self.sim_params.emission_rate = 'minute'
 
     def test_minute_risk(self):
 
-        pass
+        risk_metrics = risk.RiskMetricsIterative(self.sim_params)
 
-#        import pprint; import nose; nose.tools.set_trace()
+        first_dt = self.sim_params.first_open
+        second_dt = self.sim_params.first_open + datetime.timedelta(minutes=1)
+
+        risk_metrics.update(first_dt, 1.0, 2.0)
+
+        self.assertEquals(1, len(risk_metrics.alpha))
+
+        risk_metrics.update(second_dt, 3.0, 4.0)
+
+        self.assertEquals(2, len(risk_metrics.alpha))

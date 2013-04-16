@@ -163,10 +163,7 @@ class PerformanceTracker(object):
         self.capital_base = self.sim_params.capital_base
         self.emission_rate = sim_params.emission_rate
         self.cumulative_risk_metrics = \
-            risk.RiskMetricsIterative(
-                self.sim_params,
-                self.emission_rate
-            )
+            risk.RiskMetricsIterative(self.sim_params)
         self.emission_rate = sim_params.emission_rate
 
         # Temporarily hold these here as we work on streaming benchmarks.

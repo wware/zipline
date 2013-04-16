@@ -522,7 +522,7 @@ class RiskMetricsIterative(RiskMetricsBase):
         Call update() method on each dt to update the metrics.
     """
 
-    def __init__(self, sim_params, data_frequency='daily'):
+    def __init__(self, sim_params):
         self.treasury_curves = trading.environment.treasury_curves
         self.start_date = sim_params.period_start.replace(
             hour=0, minute=0, second=0, microsecond=0
@@ -535,15 +535,18 @@ class RiskMetricsIterative(RiskMetricsBase):
         mask = ((all_trading_days >= self.start_date) &
                 (all_trading_days <= self.end_date))
 
-        self.data_frequency = data_frequency
+        self.trading_days = all_trading_days[mask]
 
         if sim_params.emission_rate == 'daily':
-            self.trading_days = all_trading_days[mask]
-
             self.algorithm_returns_cont = pd.Series(index=self.trading_days)
             self.benchmark_returns_cont = pd.Series(index=self.trading_days)
+
         elif sim_params.emission_rate == 'minute':
+
             self.algorithm_returns_cont = pd.Series(index=pd.date_range(
+                sim_params.first_open, sim_params.last_close,
+                freq="Min"))
+            self.benchmark_returns_cont = pd.Series(index=pd.date_range(
                 sim_params.first_open, sim_params.last_close,
                 freq="Min"))
 
