@@ -537,6 +537,8 @@ class RiskMetricsIterative(RiskMetricsBase):
 
         self.trading_days = all_trading_days[mask]
 
+        self.sim_params = sim_params
+
         if sim_params.emission_rate == 'daily':
             self.algorithm_returns_cont = pd.Series(index=self.trading_days)
             self.benchmark_returns_cont = pd.Series(index=self.trading_days)
@@ -638,15 +640,19 @@ algorithm_returns ({algo_count}) in range {start} : {end}"
             'treasury_period_return': self.treasury_period_return,
             'algorithm_period_return': self.algorithm_period_returns[-1],
             'benchmark_period_return': self.benchmark_period_returns[-1],
-            'sharpe': self.sharpe[-1],
-            'sortino': self.sortino[-1],
-            'information': self.information[-1],
             'beta': self.beta[-1],
             'alpha': self.alpha[-1],
             'excess_return': self.excess_returns[-1],
             'max_drawdown': self.max_drawdown,
             'period_label': period_label
         }
+
+        if self.sim_params.emission_rate == 'daily':
+            # Some risk metrics only make sense in a context of daily
+            # risk calculations.
+            rval['sharpe'] = self.sharpe[-1]
+            rval['sortino'] = self.sortino[-1]
+            rval['information'] = self.information[-1]
 
         # check if a field in rval is nan, and replace it with
         # None.
