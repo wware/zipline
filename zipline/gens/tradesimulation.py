@@ -76,12 +76,11 @@ class Blotter(object):
             results = []
 
             for event in snapshot:
-                results.append(event)
                 # We only fill transactions on trade events.
                 if event.type == DATASOURCE_TYPE.TRADE:
                     txns, modified_orders = self.process_trade(event)
                     results.extend(chain(txns, modified_orders))
-
+                results.append(event)
             yield date, results
 
     def process_trade(self, trade_event):
