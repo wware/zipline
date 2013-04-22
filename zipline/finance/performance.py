@@ -612,7 +612,13 @@ class PerformancePeriod(object):
 
     def record_order(self, order):
         if self.keep_orders:
-            self.placed_orders.append(order)
+            self.orders_by_modified[order.dt].append(order)
+            # to preserve the order of the orders by modified date
+            # we delete and add back. (ordered dictionary is sorted by
+            # first insertion date).
+            if order.id in self.orders_by_id:
+                del self.orders_by_id[order.id]
+            self.orders_by_id[order.id] = order
 
     def execute_transaction(self, txn):
         # Update Position
