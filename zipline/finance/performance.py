@@ -135,6 +135,7 @@ import math
 
 import numpy as np
 import pandas as pd
+from collections import OrderedDict, defaultdict
 
 import zipline.protocol as zp
 import zipline.finance.risk as risk
@@ -293,6 +294,7 @@ class PerformanceTracker(object):
             self.todays_performance.update_last_sale(event)
 
         elif event.type == zp.DATASOURCE_TYPE.TRANSACTION:
+
             # Trade simulation always follows a transaction with the
             # TRADE event that was used to simulate it, so we don't
             # check for end of day rollover messages here.
@@ -522,9 +524,10 @@ class PerformancePeriod(object):
         self.starting_cash = starting_cash
         self.ending_cash = starting_cash
         self.keep_transactions = keep_transactions
-        self.processed_transactions = []
+        self.processed_transactions = defaultdict(list)
         self.keep_orders = keep_orders
-        self.placed_orders = []
+        self.orders_by_modified = defaultdict(list)
+        self.orders_by_id = OrderedDict()
         self.cumulative_capital_used = 0.0
         self.max_capital_used = 0.0
         self.max_leverage = 0.0
@@ -549,8 +552,9 @@ class PerformancePeriod(object):
         self.starting_cash = self.ending_cash
         self.period_cash_flow = 0.0
         self.pnl = 0.0
-        self.processed_transactions = []
-        self.placed_orders = []
+        self.processed_transactions = defaultdict(list)
+        self.orders_by_modified = defaultdict(list)
+        self.orders_by_id = OrderedDict()
         self.cumulative_capital_used = 0.0
         self.max_capital_used = 0.0
         self.max_leverage = 0.0
@@ -652,7 +656,7 @@ class PerformancePeriod(object):
 
         # add transaction to the list of processed transactions
         if self.keep_transactions:
-            self.processed_transactions.append(txn)
+            self.processed_transactions[txn.dt].append(txn)
 
     def round_to_nearest(self, x, base=5):
         return int(base * round(float(x) / base))
@@ -709,21 +713,20 @@ class PerformancePeriod(object):
             if dt:
                 # Only include transactions for given dt
                 transactions = [x.to_dict()
-                                for x in self.processed_transactions
-                                if x.dt == dt]
+                                for x in self.processed_transactions[dt]]
             else:
-                transactions = [x.to_dict()
-                                for x in self.processed_transactions]
+                transactions = \
+                    [y.to_dict()
+                     for x in self.processed_transactions.itervalues()
+                     for y in x]
             rval['transactions'] = transactions
 
         if self.keep_orders:
             if dt:
                 # only include orders modified as of the given dt.
-                orders = [x.to_dict()
-                          for x in self.placed_orders
-                          if x.dt == dt]
+                orders = [x.to_dict() for x in self.orders_by_modified[dt]]
             else:
-                orders = [x.to_dict() for x in self.placed_orders]
+                orders = [x.to_dict() for x in self.orders_by_id.itervalues()]
             rval['orders'] = orders
 
         return rval
