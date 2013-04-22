@@ -616,7 +616,7 @@ class PerformancePeriod(object):
 
     def record_order(self, order):
         if self.keep_orders:
-            self.orders_by_modified[order.last_modified_dt].append(order)
+            self.orders_by_modified[order.dt].append(order)
             # to preserve the order of the orders by modified date
             # we delete and add back. (ordered dictionary is sorted by
             # first insertion date).
