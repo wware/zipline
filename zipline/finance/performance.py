@@ -241,7 +241,6 @@ class PerformanceTracker(object):
                         event.portfolio = None
                         new_snapshot.append(event)
 
-
                 self.handle_minute_close(date)
 
                 if new_snapshot:

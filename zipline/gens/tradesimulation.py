@@ -70,8 +70,9 @@ class Blotter(object):
         for date, snapshot in stream_in:
             # relay any orders placed in prior snapshot
             # handling and reset the internal holding pen
+            new_orders = []
             if self.new_orders:
-                yield date, self.new_orders
+                new_orders = self.new_orders
                 self.new_orders = []
             results = []
 
@@ -81,6 +82,8 @@ class Blotter(object):
                 if event.type == DATASOURCE_TYPE.TRADE:
                     txns, modified_orders = self.process_trade(event)
                     results.extend(chain(txns, modified_orders))
+
+            results.extend(chain(new_orders))
 
             yield date, results
 
@@ -480,6 +483,9 @@ class AlgorithmSimulator(object):
         """
         # Needs to be set so that we inject the proper date into algo
         # log/print lines.
+        print('simulate_snapshot')
+        print(date)
+
         self.snapshot_dt = date
         self.algo.set_datetime(self.snapshot_dt)
         self.algo.handle_data(self.universe)
