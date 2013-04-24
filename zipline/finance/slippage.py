@@ -223,6 +223,6 @@ class FixedSlippage(object):
             )
 
             # mark the last_modified date of the order to match
-            order.last_modified = event.dt
+            order.dt = event.dt
             txns.append(txn)
         return txns

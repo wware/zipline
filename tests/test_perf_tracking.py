@@ -22,7 +22,6 @@ from nose_parameterized import parameterized
 import datetime
 import pytz
 import itertools
-from operator import attrgetter
 
 import zipline.utils.factory as factory
 import zipline.finance.performance as perf
@@ -57,6 +56,28 @@ def benchmark_events_in_range(sim_params):
         if ret.date.date() >= sim_params.period_start.date()
         and ret.date.date() <= sim_params.period_end.date()
     ]
+
+
+def calculate_results(host, events):
+        perf_tracker = perf.PerformanceTracker(host.sim_params)
+
+        all_events = heapq.merge(
+            ((event.dt, event) for event in events),
+            ((event.dt, event) for event in host.benchmark_events))
+
+        filtered_events = [(date, event) for (date, event)
+                           in all_events if date <= events[-1].dt]
+        filtered_events.sort(key=lambda x: x[0])
+        grouped_events = itertools.groupby(filtered_events, lambda x: x[0])
+        results = []
+
+        for date, group in grouped_events:
+            for _, event in group:
+                perf_tracker.process_event(event)
+            msg = perf_tracker.handle_market_close()
+            results.append(msg)
+
+        return results
 
 
 class TestDividendPerformance(unittest.TestCase):
@@ -106,31 +127,7 @@ class TestDividendPerformance(unittest.TestCase):
         txn = create_txn(1, 10.0, 100, events[0].dt)
         events.insert(0, txn)
         events.insert(1, dividend)
-
-        perf_tracker = perf.PerformanceTracker(self.sim_params)
-
-        all_events = (msg[1] for msg in heapq.merge(
-            ((event.dt, event) for event in events),
-            ((event.dt, event) for event in self.benchmark_events)))
-
-        transformed_events = list(perf_tracker.transform(
-            itertools.groupby(all_events, attrgetter('dt'))))
-
-        #flatten the list of events
-        results = []
-        for te in transformed_events:
-            for event in te[1]:
-                for message in event.perf_messages:
-                    results.append(message)
-
-        perf_messages, risk = perf_tracker.handle_simulation_end()
-        results.append(perf_messages[0])
-
-        self.assertEqual(results[0]['daily_perf']['period_open'], events[0].dt)
-        self.assertEqual(
-            results[-1]['daily_perf']['period_open'],
-            events[-1].dt
-        )
+        results = calculate_results(self, events)
 
         self.assertEqual(len(results), 5)
         cumulative_returns = \
@@ -168,24 +165,7 @@ class TestDividendPerformance(unittest.TestCase):
         events.insert(1, dividend)
         txn = create_txn(1, 10.0, 100, events[3].dt)
         events.insert(4, txn)
-        perf_tracker = perf.PerformanceTracker(self.sim_params)
-
-        all_events = (msg[1] for msg in heapq.merge(
-            ((event.dt, event) for event in events),
-            ((event.dt, event) for event in self.benchmark_events)))
-
-        transformed_events = list(perf_tracker.transform(
-            itertools.groupby(all_events, attrgetter('dt'))))
-
-        #flatten the list of events
-        results = []
-        for te in transformed_events:
-            for event in te[1]:
-                for message in event.perf_messages:
-                    results.append(message)
-
-        perf_messages, risk = perf_tracker.handle_simulation_end()
-        results.append(perf_messages[0])
+        results = calculate_results(self, events)
 
         self.assertEqual(len(results), 5)
         cumulative_returns = \
@@ -222,24 +202,7 @@ class TestDividendPerformance(unittest.TestCase):
         sell_txn = create_txn(1, 10.0, -100, events[3].dt)
         events.insert(4, sell_txn)
         events.insert(0, dividend)
-        perf_tracker = perf.PerformanceTracker(self.sim_params)
-
-        all_events = (msg[1] for msg in heapq.merge(
-            ((event.dt, event) for event in events),
-            ((event.dt, event) for event in self.benchmark_events)))
-
-        transformed_events = list(perf_tracker.transform(
-            itertools.groupby(all_events, attrgetter('dt'))))
-
-        #flatten the list of events
-        results = []
-        for te in transformed_events:
-            for event in te[1]:
-                for message in event.perf_messages:
-                    results.append(message)
-
-        perf_messages, risk = perf_tracker.handle_simulation_end()
-        results.append(perf_messages[0])
+        results = calculate_results(self, events)
 
         self.assertEqual(len(results), 5)
         cumulative_returns = \
@@ -272,28 +235,11 @@ class TestDividendPerformance(unittest.TestCase):
         )
 
         buy_txn = create_txn(1, 10.0, 100, events[1].dt)
-        events.insert(2, buy_txn)
+        events.insert(1, buy_txn)
         sell_txn = create_txn(1, 10.0, -100, events[3].dt)
-        events.insert(4, sell_txn)
+        events.insert(3, sell_txn)
         events.insert(1, dividend)
-        perf_tracker = perf.PerformanceTracker(self.sim_params)
-
-        all_events = heapq.merge(
-            ((event.dt, event) for event in events),
-            ((event.dt, event) for event in self.benchmark_events))
-
-        transformed_events = list(perf_tracker.transform(
-            (event[0], [event[1]]) for event in all_events))
-
-        #flatten the list of events
-        results = []
-        for te in transformed_events:
-            for event in te[1]:
-                for message in event.perf_messages:
-                    results.append(message)
-
-        perf_messages, risk = perf_tracker.handle_simulation_end()
-        results.append(perf_messages[0])
+        results = calculate_results(self, events)
 
         self.assertEqual(len(results), 6)
         cumulative_returns = \
@@ -328,24 +274,8 @@ class TestDividendPerformance(unittest.TestCase):
         buy_txn = create_txn(1, 10.0, 100, events[1].dt)
         events.insert(2, buy_txn)
         events.insert(1, dividend)
-        perf_tracker = perf.PerformanceTracker(self.sim_params)
 
-        all_events = (msg[1] for msg in heapq.merge(
-            ((event.dt, event) for event in events),
-            ((event.dt, event) for event in self.benchmark_events)))
-
-        transformed_events = list(perf_tracker.transform(
-            itertools.groupby(all_events, attrgetter('dt'))))
-
-        #flatten the list of events
-        results = []
-        for te in transformed_events:
-            for event in te[1]:
-                for message in event.perf_messages:
-                    results.append(message)
-
-        perf_messages, risk = perf_tracker.handle_simulation_end()
-        results.append(perf_messages[0])
+        results = calculate_results(self, events)
 
         self.assertEqual(len(results), 5)
         cumulative_returns = \
@@ -383,24 +313,7 @@ class TestDividendPerformance(unittest.TestCase):
         txn = create_txn(1, 10.0, -100, self.dt + oneday)
         events.insert(1, txn)
         events.insert(0, dividend)
-        perf_tracker = perf.PerformanceTracker(self.sim_params)
-
-        all_events = (msg[1] for msg in heapq.merge(
-            ((event.dt, event) for event in events),
-            ((event.dt, event) for event in self.benchmark_events)))
-
-        transformed_events = list(perf_tracker.transform(
-            itertools.groupby(all_events, attrgetter('dt'))))
-
-        #flatten the list of events
-        results = []
-        for te in transformed_events:
-            for event in te[1]:
-                for message in event.perf_messages:
-                    results.append(message)
-
-        perf_messages, risk = perf_tracker.handle_simulation_end()
-        results.append(perf_messages[0])
+        results = calculate_results(self, events)
 
         self.assertEqual(len(results), 5)
         cumulative_returns = \
@@ -409,10 +322,10 @@ class TestDividendPerformance(unittest.TestCase):
         daily_returns = [event['daily_perf']['returns'] for event in results]
         self.assertEqual(daily_returns, [0.0, 0.0, -0.1, 0.0, 0.0])
         cash_flows = [event['daily_perf']['capital_used'] for event in results]
-        self.assertEqual(cash_flows, [1000, 0, -1000, 0, 0])
+        self.assertEqual(cash_flows, [0, 1000, -1000, 0, 0])
         cumulative_cash_flows = \
             [event['cumulative_perf']['capital_used'] for event in results]
-        self.assertEqual(cumulative_cash_flows, [1000, 1000, 0, 0, 0])
+        self.assertEqual(cumulative_cash_flows, [0, 1000, 0, 0, 0])
 
     def test_no_position_receives_no_dividend(self):
         #post some trades in the market
@@ -433,24 +346,7 @@ class TestDividendPerformance(unittest.TestCase):
         )
 
         events.insert(1, dividend)
-        perf_tracker = perf.PerformanceTracker(self.sim_params)
-
-        all_events = (msg[1] for msg in heapq.merge(
-            ((event.dt, event) for event in events),
-            ((event.dt, event) for event in self.benchmark_events)))
-
-        transformed_events = list(perf_tracker.transform(
-            itertools.groupby(all_events, attrgetter('dt'))))
-
-        #flatten the list of events
-        results = []
-        for te in transformed_events:
-            for event in te[1]:
-                for message in event.perf_messages:
-                    results.append(message)
-
-        perf_messages, risk = perf_tracker.handle_simulation_end()
-        results.append(perf_messages[0])
+        results = calculate_results(self, events)
 
         self.assertEqual(len(results), 5)
         cumulative_returns = \
@@ -1056,19 +952,21 @@ class TestPerformanceTracker(unittest.TestCase):
             ((event.dt, event) for event in events),
             ((event.dt, event) for event in benchmark_events)))
 
-        # Extract events with transactions to use for verification.
-        perf_messages = \
-            [m for date, snapshot in
-             perf_tracker.transform(
-                 itertools.groupby(all_events, attrgetter('dt')))
-             for e in snapshot
-             for m in e.perf_messages]
+        filtered_events = [event for event
+                           in all_events if event.dt <= end_dt]
+        filtered_events.sort(key=lambda x: x.dt)
+        grouped_events = itertools.groupby(filtered_events, lambda x: x.dt)
+        perf_messages = []
 
-        end_perf_messages, risk_message = perf_tracker.handle_simulation_end()
+        for date, group in grouped_events:
+            for event in group:
+                perf_tracker.process_event(event)
+            msg = perf_tracker.handle_market_close()
+            perf_messages.append(msg)
 
-        perf_messages.extend(end_perf_messages)
+        perfs, risk = perf_tracker.handle_simulation_end()
+        perf_messages.extend(perfs)
 
-        #we skip two trades, to test case of None transaction
         self.assertEqual(perf_tracker.txn_count, len(txns))
         self.assertEqual(perf_tracker.txn_count, len(orders))
 
@@ -1118,6 +1016,7 @@ class TestPerformanceTracker(unittest.TestCase):
             emission_rate='minute'
         )
         tracker = perf.PerformanceTracker(sim_params)
+        benchmark_events = benchmark_events_in_range(sim_params)
 
         foo_event_1 = factory.create_trade('foo', 10.0, 20, start_dt)
         order_event_1 = Order(**{
@@ -1145,12 +1044,21 @@ class TestPerformanceTracker(unittest.TestCase):
             foo_event_2,
             bar_event_2
         ]
+        all_events = (msg[1] for msg in heapq.merge(
+            ((event.dt, event) for event in events),
+            ((event.dt, event) for event in benchmark_events)))
 
-        messages = {date: snapshot[-1].perf_messages[0] for date, snapshot in
-                    tracker.transform(
-                        itertools.groupby(
-                            events,
-                            operator.attrgetter('dt')))}
+        grouped_events = itertools.groupby(
+            all_events, operator.attrgetter('dt'))
+
+        messages = {}
+        for date, group in grouped_events:
+            tracker.set_date(date)
+            for event in group:
+                tracker.process_event(event)
+            msg = tracker.get_message(date, {})
+            if msg:
+                messages[date] = msg
 
         self.assertEquals(2, len(messages))
 
