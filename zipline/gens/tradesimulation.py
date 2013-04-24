@@ -483,9 +483,6 @@ class AlgorithmSimulator(object):
         """
         # Needs to be set so that we inject the proper date into algo
         # log/print lines.
-        print('simulate_snapshot')
-        print(date)
-
         self.snapshot_dt = date
         self.algo.set_datetime(self.snapshot_dt)
         self.algo.handle_data(self.universe)
