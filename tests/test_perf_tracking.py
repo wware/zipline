@@ -964,9 +964,6 @@ class TestPerformanceTracker(unittest.TestCase):
             msg = perf_tracker.handle_market_close()
             perf_messages.append(msg)
 
-        perfs, risk = perf_tracker.handle_simulation_end()
-        perf_messages.extend(perfs)
-
         self.assertEqual(perf_tracker.txn_count, len(txns))
         self.assertEqual(perf_tracker.txn_count, len(orders))
 
@@ -1016,7 +1013,6 @@ class TestPerformanceTracker(unittest.TestCase):
             emission_rate='minute'
         )
         tracker = perf.PerformanceTracker(sim_params)
-        benchmark_events = benchmark_events_in_range(sim_params)
 
         foo_event_1 = factory.create_trade('foo', 10.0, 20, start_dt)
         order_event_1 = Order(**{
@@ -1044,21 +1040,18 @@ class TestPerformanceTracker(unittest.TestCase):
             foo_event_2,
             bar_event_2
         ]
-        all_events = (msg[1] for msg in heapq.merge(
-            ((event.dt, event) for event in events),
-            ((event.dt, event) for event in benchmark_events)))
 
         grouped_events = itertools.groupby(
-            all_events, operator.attrgetter('dt'))
+            events, operator.attrgetter('dt'))
 
         messages = {}
         for date, group in grouped_events:
             tracker.set_date(date)
             for event in group:
                 tracker.process_event(event)
-            msg = tracker.get_message(date, {})
-            if msg:
-                messages[date] = msg
+
+            msg = tracker.to_dict()
+            messages[date] = msg
 
         self.assertEquals(2, len(messages))
 

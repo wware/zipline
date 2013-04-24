@@ -25,7 +25,6 @@ from zipline import ndict
 from zipline.protocol import SIDData, DATASOURCE_TYPE
 from zipline.finance.performance import PerformanceTracker
 from zipline.gens.utils import hash_args
-import zipline.finance.trading as trading
 
 from zipline.finance.slippage import (
     VolumeShareSlippage,
@@ -406,6 +405,7 @@ class AlgorithmSimulator(object):
         # snapshot time to any log record generated.
         with self.processor.threadbound():
             updated = False
+            bm_updated = False
             for date, snapshot in stream:
                 self.perf_tracker.set_date(date)
                 # If we're still in the warmup period.  Use the event to
@@ -425,6 +425,8 @@ class AlgorithmSimulator(object):
                                           DATASOURCE_TYPE.CUSTOM):
                             self.update_universe(event)
                             updated = True
+                        if event.type == DATASOURCE_TYPE.BENCHMARK:
+                            bm_updated = True
                         txns, orders = self.blotter.process_trade(event)
                         for data in chain([event], txns, orders):
                             self.perf_tracker.process_event(data)
@@ -434,44 +436,25 @@ class AlgorithmSimulator(object):
 
                     # Send the current state of the universe
                     # to the user's algo.
-                    msg_date = date
                     if updated:
                         self.simulate_snapshot(date)
                         updated = False
 
                         # run orders placed in the algorithm call
                         # above through perf tracker before emitting
-                        # the perf packet
+                        # the perf packet, so that the perf includes
+                        # placed orders
                         for order in self.blotter.new_orders:
                             self.perf_tracker.process_event(order)
                         self.blotter.new_orders = []
 
-                    # TODO: system performance bug here.
-                    # if we are working with daily bars, we
-                    # hack the date variable to be the
-                    # market close of the same day.
-                    if self.algo.data_frequency == 'daily':
-                        _, msg_date = \
-                            trading.environment.get_open_and_close(date)
+                    # The benchmark is our internal clock. When it
+                    # updates, we need to emit a performance message.
+                    if bm_updated:
+                        bm_updated = False
+                        yield self.get_message()
 
-                    # if self.algo.data_frequency == 'minute':
-                    #     if date > self.perf_tracker.market_close:
-                    #         import nose.tools; nose.tools.set_trace()
-
-                    rvars = self.algo.recorded_vars
-                    msg = self.perf_tracker.get_message(msg_date, rvars)
-                    if msg:
-                        yield msg
-                        msg = None
-
-            perf_messages, risk_message = \
-                self.perf_tracker.handle_simulation_end()
-
-            if self.perf_tracker.emission_rate == 'daily':
-                for message in perf_messages:
-                    message[self.perf_key]['recorded_vars'] =\
-                        self.algo.recorded_vars
-                    yield message
+            risk_message = self.perf_tracker.handle_simulation_end()
 
             # When emitting minutely, it is still useful to have a final
             # packet with the entire days performance rolled up.
@@ -484,6 +467,19 @@ class AlgorithmSimulator(object):
                 yield daily_rollup
 
             yield risk_message
+
+    def get_message(self):
+        rvars = self.algo.recorded_vars
+        if self.perf_tracker.emission_rate == 'daily':
+                perf_message = \
+                    self.perf_tracker.handle_market_close()
+                perf_message['daily_perf']['recorded_vars'] = rvars
+                return perf_message
+
+        elif self.perf_tracker.emission_rate == 'minute':
+                perf_message = self.perf_tracker.to_dict()
+                perf_message['intraday_perf']['recorded_vars'] = rvars
+                return perf_message
 
     def update_universe(self, event):
         """

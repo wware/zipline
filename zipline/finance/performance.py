@@ -216,20 +216,6 @@ class PerformanceTracker(object):
     def get_portfolio(self):
         return self.cumulative_performance.as_portfolio()
 
-    def get_message(self, date, rvars):
-        if self.emission_rate == 'daily':
-            if date <= self.last_close and date >= self.market_close:
-                perf_message = \
-                    self.handle_market_close()
-                perf_message['daily_perf']['recorded_vars'] = rvars
-                return perf_message
-
-        elif self.emission_rate == 'minute':
-            if date >= self.market_open:
-                perf_message = self.to_dict()
-                perf_message['intraday_perf']['recorded_vars'] = rvars
-                return perf_message
-
     def to_dict(self, emission_type=None):
         """
         Creates a dictionary representing the state of this tracker.
@@ -361,16 +347,6 @@ class PerformanceTracker(object):
         When the simulation is complete, run the full period risk report
         and send it out on the results socket.
         """
-        # the stream will end on the last trading day, but will
-        # not trigger an end of day, so we trigger the final
-        # market close(s) here
-        perf_messages = []
-        while self.last_close > self.market_close:
-            perf_messages.append(self.handle_market_close())
-
-        if self.emission_rate == 'minute' or \
-                len(self.returns) < self.sim_params.days_in_period:
-            perf_messages.append(self.handle_market_close())
 
         log_msg = "Simulated {n} trading days out of {m}."
         log.info(log_msg.format(n=int(self.day_count), m=self.total_days))
@@ -382,7 +358,7 @@ class PerformanceTracker(object):
         self.risk_report = risk.RiskReport(self.returns, self.sim_params)
 
         risk_dict = self.risk_report.to_dict()
-        return perf_messages, risk_dict
+        return risk_dict
 
 
 class Position(object):
