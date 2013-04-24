@@ -59,36 +59,38 @@ def benchmark_events_in_range(sim_params):
 
 
 def calculate_results(host, events):
-        perf_tracker = perf.PerformanceTracker(host.sim_params)
+    perf_tracker = perf.PerformanceTracker(host.sim_params)
 
-        all_events = heapq.merge(
-            ((event.dt, event) for event in events),
-            ((event.dt, event) for event in host.benchmark_events))
+    all_events = heapq.merge(
+        ((event.dt, event) for event in events),
+        ((event.dt, event) for event in host.benchmark_events))
 
-        filtered_events = [(date, event) for (date, event)
-                           in all_events if date <= events[-1].dt]
-        filtered_events.sort(key=lambda x: x[0])
-        grouped_events = itertools.groupby(filtered_events, lambda x: x[0])
-        results = []
+    filtered_events = [(date, event) for (date, event)
+                       in all_events if date <= events[-1].dt]
+    filtered_events.sort(key=lambda x: x[0])
+    grouped_events = itertools.groupby(filtered_events, lambda x: x[0])
+    results = []
 
-        for date, group in grouped_events:
-            for _, event in group:
-                perf_tracker.process_event(event)
+    bm_updated = False
+    for date, group in grouped_events:
+        for _, event in group:
+            perf_tracker.process_event(event)
+            if event.type == DATASOURCE_TYPE.BENCHMARK:
+                bm_updated = True
+        if bm_updated:
             msg = perf_tracker.handle_market_close()
             results.append(msg)
-
-        return results
+            bm_updated = False
+    return results
 
 
 class TestDividendPerformance(unittest.TestCase):
 
     def setUp(self):
-
         self.sim_params, self.dt, self.end_dt = \
             create_random_simulation_parameters()
 
         self.sim_params.capital_base = 10e3
-
         self.benchmark_events = benchmark_events_in_range(self.sim_params)
 
     def test_market_hours_calculations(self):
@@ -263,12 +265,16 @@ class TestDividendPerformance(unittest.TestCase):
             self.sim_params
         )
 
+        pay_date = self.sim_params.first_open
+        # find pay date that is much later.
+        for i in xrange(30):
+            pay_date = factory.get_next_trading_dt(pay_date, oneday)
         dividend = factory.create_dividend(
             1,
             10.00,
             events[0].dt,
             events[1].dt,
-            events[-1].dt + 10 * oneday
+            pay_date
         )
 
         buy_txn = create_txn(1, 10.0, 100, events[1].dt)
@@ -305,12 +311,15 @@ class TestDividendPerformance(unittest.TestCase):
         dividend = factory.create_dividend(
             1,
             10.00,
+            # declare at open of test
             events[0].dt,
-            events[1].dt,
-            events[2].dt
+            # ex_date same as trade 2
+            events[2].dt,
+            events[3].dt
         )
 
-        txn = create_txn(1, 10.0, -100, self.dt + oneday)
+        txn = create_txn(1, 10.0, -100, events[1].dt)
+
         events.insert(1, txn)
         events.insert(0, dividend)
         results = calculate_results(self, events)
@@ -318,14 +327,14 @@ class TestDividendPerformance(unittest.TestCase):
         self.assertEqual(len(results), 5)
         cumulative_returns = \
             [event['cumulative_perf']['returns'] for event in results]
-        self.assertEqual(cumulative_returns, [0.0, 0.0, -0.1, -0.1, -0.1])
+        self.assertEqual(cumulative_returns, [0.0, 0.0, 0.0, -0.1, -0.1])
         daily_returns = [event['daily_perf']['returns'] for event in results]
-        self.assertEqual(daily_returns, [0.0, 0.0, -0.1, 0.0, 0.0])
+        self.assertEqual(daily_returns, [0.0, 0.0, 0.0, -0.1, 0.0])
         cash_flows = [event['daily_perf']['capital_used'] for event in results]
-        self.assertEqual(cash_flows, [0, 1000, -1000, 0, 0])
+        self.assertEqual(cash_flows, [0, 1000, 0, -1000, 0])
         cumulative_cash_flows = \
             [event['cumulative_perf']['capital_used'] for event in results]
-        self.assertEqual(cumulative_cash_flows, [0, 1000, 0, 0, 0])
+        self.assertEqual(cumulative_cash_flows, [0, 1000, 1000, 0, 0])
 
     def test_no_position_receives_no_dividend(self):
         #post some trades in the market
@@ -359,6 +368,16 @@ class TestDividendPerformance(unittest.TestCase):
         cumulative_cash_flows = \
             [event['cumulative_perf']['capital_used'] for event in results]
         self.assertEqual(cumulative_cash_flows, [0, 0, 0, 0, 0])
+
+
+class TestDividendPerformanceHolidayStyle(TestDividendPerformance):
+    def setUp(self):
+        self.dt = datetime.datetime(2003, 11, 30, tzinfo=pytz.utc)
+        self.end_dt = datetime.datetime(2004, 11, 25, tzinfo=pytz.utc)
+        self.sim_params = SimulationParameters(
+            self.dt,
+            self.end_dt)
+        self.benchmark_events = benchmark_events_in_range(self.sim_params)
 
 
 class TestPositionPerformance(unittest.TestCase):
