@@ -12,12 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import re
 
 import requests
 
-from StringIO import StringIO
-from xml.dom.minidom import parse
+from collections import OrderedDict
+import xml.etree.ElementTree as ET
 
 from loader_utils import (
     guarded_conversion,
@@ -62,26 +62,72 @@ def treasury_mappings():
             in _CURVE_MAPPINGS.iteritems()}
 
 
+class iter_to_stream(object):
+    """
+    Exposes an iterable as an i/o stream
+    """
+    def __init__(self, iterable):
+        self.buffered = ""
+        self.iter = iter(iterable)
+
+    def read(self, size):
+        result = ""
+        while size > 0:
+            data = self.buffered or next(self.iter, None)
+            self.buffered = ""
+            if data is None:
+                break
+            size -= len(data)
+            if size < 0:
+                data, self.buffered = data[:size], data[size:]
+            result += data
+        return result
+
+
+def get_localname(element):
+    qtag = ET.QName(element.tag).text
+    return re.match("(\{.*\})(.*)", qtag).group(2)
+
+
 def get_treasury_source():
     url = """\
 http://data.treasury.gov/feed.svc/DailyTreasuryYieldCurveRateData\
 """
-    res = requests.get(url)
+    res = requests.get(url, stream=True)
+    stream = iter_to_stream(res.iter_lines())
 
-    content = StringIO(res.content)
-    dom = parse(content)
+    elements = ET.iterparse(stream, ('end', 'start-ns', 'end-ns'))
 
-    entries = dom.getElementsByTagName("entry")
+    namespaces = OrderedDict()
+    properties_xpath = ['']
 
-    for entry in entries:
-        properties = entry.getElementsByTagName("m:properties")
-        datum = {node.nodeName.replace('d:', ''):
-                 node.childNodes[0].nodeValue
-                 if len(node.childNodes)
-                 else None
-                 for node in properties[0].childNodes
-                 if node.nodeType == dom.ELEMENT_NODE}
-        yield datum
+    def updated_namespaces():
+        if '' in namespaces and 'm' in namespaces:
+            properties_xpath[0] = "{%s}content/{%s}properties" % (
+                namespaces[''], namespaces['m']
+            )
+        else:
+            properties_xpath[0] = ''
+
+    for event, element in elements:
+        if event == 'end':
+            tag = get_localname(element)
+            if tag == "entry":
+                properties = element.find(properties_xpath[0])
+                datum = {get_localname(node): node.text
+                         for node in properties.getchildren()
+                         if ET.iselement(node)}
+                # clear the element after we've dealt with it:
+                element.clear()
+                yield datum
+
+        elif event == 'start-ns':
+            namespaces[element[0]] = element[1]
+            updated_namespaces()
+
+        elif event == 'end-ns':
+            namespaces.popitem()
+            updated_namespaces()
 
 
 def get_treasury_data():

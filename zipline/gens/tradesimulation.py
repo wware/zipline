@@ -355,10 +355,10 @@ class AlgorithmSimulator(object):
         """
         amount > 0 :: Buy/Cover
         amount < 0 :: Sell/Short
-        Market order:    order(sid,amount)
-        Limit order:     order(sid,amount, limit_price)
-        Stop order:      order(sid,amount, None, stop_price)
-        StopLimit order: order(sid,amount, limit_price, stop_price)
+        Market order:    order(sid, amount)
+        Limit order:     order(sid, amount, limit_price)
+        Stop order:      order(sid, amount, None, stop_price)
+        StopLimit order: order(sid, amount, limit_price, stop_price)
         """
 
         # just validates amount and passes rest on to TransactionSimulator
@@ -409,6 +409,7 @@ class AlgorithmSimulator(object):
             for date, snapshot in stream:
                 self.perf_tracker.set_date(date)
                 # If we're still in the warmup period.  Use the event to
+
                 # update our universe, but don't yield any perf messages,
                 # and don't send a snapshot to handle_data.
                 if date < self.algo_start:
@@ -452,7 +453,7 @@ class AlgorithmSimulator(object):
                     # updates, we need to emit a performance message.
                     if bm_updated:
                         bm_updated = False
-                        yield self.get_message()
+                        yield self.get_message(date)
 
             risk_message = self.perf_tracker.handle_simulation_end()
 
@@ -468,18 +469,19 @@ class AlgorithmSimulator(object):
 
             yield risk_message
 
-    def get_message(self):
+    def get_message(self, date):
         rvars = self.algo.recorded_vars
         if self.perf_tracker.emission_rate == 'daily':
-                perf_message = \
-                    self.perf_tracker.handle_market_close()
-                perf_message['daily_perf']['recorded_vars'] = rvars
-                return perf_message
+            perf_message = \
+                self.perf_tracker.handle_market_close()
+            perf_message['daily_perf']['recorded_vars'] = rvars
+            return perf_message
 
         elif self.perf_tracker.emission_rate == 'minute':
-                perf_message = self.perf_tracker.to_dict()
-                perf_message['intraday_perf']['recorded_vars'] = rvars
-                return perf_message
+            self.perf_tracker.handle_minute_close(date)
+            perf_message = self.perf_tracker.to_dict()
+            perf_message['intraday_perf']['recorded_vars'] = rvars
+            return perf_message
 
     def update_universe(self, event):
         """

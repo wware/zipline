@@ -160,13 +160,18 @@ class PerformanceTracker(object):
             trading.environment.get_open_and_close(first_day)
         self.total_days = self.sim_params.days_in_period
         self.capital_base = self.sim_params.capital_base
+        self.emission_rate = sim_params.emission_rate
         self.cumulative_risk_metrics = \
-            risk.RiskMetricsIterative(self.period_start, self.period_end)
+            risk.RiskMetricsIterative(self.sim_params)
         self.emission_rate = sim_params.emission_rate
 
-        # Temporarily hold these here as we work on streaming benchmarks.
-        self.all_benchmark_returns = pd.Series(
-            index=trading.environment.trading_days)
+        if self.emission_rate == 'daily':
+            self.all_benchmark_returns = pd.Series(
+                index=trading.environment.trading_days)
+        elif self.emission_rate == 'minute':
+            self.all_benchmark_returns = pd.Series(index=pd.date_range(
+                self.sim_params.first_open, self.sim_params.last_close,
+                freq='Min'))
 
         # this performance period will span the entire simulation.
         self.cumulative_performance = PerformancePeriod(
@@ -201,7 +206,6 @@ class PerformanceTracker(object):
         self.day_count = 0.0
         self.txn_count = 0
         self.event_count = 0
-        self.progress = 0.0
 
     def __repr__(self):
         return "%s(%r)" % (
@@ -212,6 +216,14 @@ class PerformanceTracker(object):
         if self.emission_rate == 'minute':
             self.saved_dt = date
             self.todays_performance.period_close = self.saved_dt
+
+    @property
+    def progress(self):
+        if self.emission_rate == 'minute':
+            # Fake a value
+            return 1.0
+        elif self.emission_rate == 'daily':
+            return self.day_count / self.total_days
 
     def get_portfolio(self):
         return self.cumulative_performance.as_portfolio()
@@ -228,19 +240,21 @@ class PerformanceTracker(object):
             'period_end': self.period_end,
             'capital_base': self.capital_base,
             'cumulative_perf': self.cumulative_performance.to_dict(),
+            'progress': self.progress
         }
         if emission_type == 'daily':
             _dict.update({'cumulative_risk_metrics':
                           self.cumulative_risk_metrics.to_dict(),
                           'daily_perf':
-                          self.todays_performance.to_dict(),
-                         'progress': self.progress})
+                          self.todays_performance.to_dict()})
         if emission_type == 'minute':
             # Currently reusing 'todays_performance' for intraday trading
             # result, should be analogous, but has the potential for needing
             # its own configuration down the line.
             # Naming as intraday to make clear that these results are
             # being updated per minute
+            _dict['intraday_risk_metrics'] = \
+                self.cumulative_risk_metrics.to_dict()
             _dict['intraday_perf'] = self.todays_performance.to_dict(
                 self.saved_dt)
 
@@ -282,6 +296,15 @@ class PerformanceTracker(object):
         self.cumulative_performance.calculate_performance()
         self.todays_performance.calculate_performance()
 
+    def handle_minute_close(self, dt):
+        #update risk metrics for cumulative performance
+        algorithm_returns = pd.Series({dt: self.todays_performance.returns})
+        benchmark_returns = pd.Series({dt: self.all_benchmark_returns[dt]})
+
+        self.cumulative_risk_metrics.update(dt,
+                                            algorithm_returns,
+                                            benchmark_returns)
+
     def handle_market_close(self):
         # add the return results from today to the list of DailyReturn objects.
         todays_date = self.market_close.replace(hour=0, minute=0, second=0,
@@ -308,8 +331,6 @@ class PerformanceTracker(object):
 
         # increment the day counter before we move markers forward.
         self.day_count += 1.0
-        # calculate progress of test
-        self.progress = self.day_count / self.total_days
 
         # Take a snapshot of our current peformance to return to the
         # browser.

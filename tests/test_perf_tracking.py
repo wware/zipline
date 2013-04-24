@@ -1026,19 +1026,31 @@ class TestPerformanceTracker(unittest.TestCase):
                                   dt=foo_event_1.dt,
                                   price=10.0,
                                   commission=0.50)
+        benchmark_event_1 = Event({
+            'dt': start_dt,
+            'returns': 1.0,
+            'type': DATASOURCE_TYPE.BENCHMARK
+        })
 
         foo_event_2 = factory.create_trade(
             'foo', 11.0, 20, start_dt + datetime.timedelta(minutes=1))
         bar_event_2 = factory.create_trade(
             'bar', 11.0, 20, start_dt + datetime.timedelta(minutes=1))
+        benchmark_event_2 = Event({
+            'dt': start_dt + datetime.timedelta(minutes=1),
+            'returns': 2.0,
+            'type': DATASOURCE_TYPE.BENCHMARK
+        })
 
         events = [
             foo_event_1,
             order_event_1,
+            benchmark_event_1,
             txn_event_1,
             bar_event_1,
             foo_event_2,
-            bar_event_2
+            benchmark_event_2,
+            bar_event_2,
         ]
 
         grouped_events = itertools.groupby(
@@ -1049,7 +1061,7 @@ class TestPerformanceTracker(unittest.TestCase):
             tracker.set_date(date)
             for event in group:
                 tracker.process_event(event)
-
+            tracker.handle_minute_close(date)
             msg = tracker.to_dict()
             messages[date] = msg
 
