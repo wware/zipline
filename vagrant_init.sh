@@ -29,6 +29,9 @@ apt-get -y update 2>&1 >> "$VAGRANT_LOG"
 echo "Installing required packages..."
 apt-get -y install python-pip python-dev g++ make libfreetype6-dev libpng-dev libopenblas-dev liblapack-dev gfortran 2>&1 >> "$VAGRANT_LOG"
 
+echo "Installing things Will likes..."
+apt-get -y install ipython ipython-doc ipython-notebook python-matplotlib python-numpy python-zmq 2>&1 >> "$VAGRANT_LOG"
+
 # Add ta-lib
 echo "Installing ta-lib integration..."
 wget http://switch.dl.sourceforge.net/project/ta-lib/ta-lib/0.4.0/ta-lib-0.4.0-src.tar.gz 2>&1 "$VAGRANT_LOG"
@@ -47,4 +50,43 @@ echo "Installing scipy..."
 pip install scipy==0.12.0 2>&1 >> "$VAGRANT_LOG"
 echo "Installing zipline dev python dependencies..."
 pip install -r /vagrant/etc/requirements_dev.txt 2>&1 >> "$VAGRANT_LOG"
+
+echo "Start an iPython notebook server process..."
+mkdir -p /home/vagrant/.ipython/profile_nbserver
+cat > /home/vagrant/.ipython/profile_nbserver/ipython_notebook_config.py <<EOF
+c = get_config()
+c.IPKernelApp.pylab = 'inline'
+c.NotebookApp.ip = '*'
+c.NotebookApp.open_browser = False
+c.NotebookApp.port = 8888
+# Password for this iPython notebook server is "Barnstable" (a town on Cape Cod)
+c.NotebookApp.password = 'sha1:b9449d212ec8:40df17fae8e4e8d4da97c56e7fb8aecca1edfa9e'
+EOF
+chown -R vagrant:vagrant /home/vagrant
+
+cat > /etc/init.d/ipython <<EOF
+#!/bin/sh
+echo "IPython Notebook \$1"
+case \$1 in
+    stop)
+        kill -9 \$(ps ax | grep ipython | cut -c -6)
+        ;;
+    start)
+        sudo -u vagrant ipython notebook --profile=nbserver &
+        ;;
+    restart)
+        kill -9 \$(ps ax | grep ipython | cut -c -6)
+        sleep 5
+        sudo -u vagrant ipython notebook --profile=nbserver &
+        ;;
+    *)
+        ;;
+esac
+EOF
+chmod 755 /etc/init.d/ipython
+(cd /etc/rc2.d; ln -s ../init.d/ipython S80ipython)
+(cd /etc/rc3.d; ln -s ../init.d/ipython S80ipython)
+(cd /etc/rc4.d; ln -s ../init.d/ipython S80ipython)
+(cd /etc/rc5.d; ln -s ../init.d/ipython S80ipython)
+
 echo "Finished!"
